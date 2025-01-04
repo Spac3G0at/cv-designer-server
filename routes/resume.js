@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const Resume = require('../models/Resume'); // Assuming the model is in the models directory
 const router = express.Router();
+const resumeMock = require('../data/mockResume.json');
 
 // Middleware to extract user ID from token
 const authenticateToken = (req, res, next) => {
@@ -24,6 +25,26 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+const withUser = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token || token === "null") {
+    return next();
+  }
+
+  console.log("HAS TOKEN VERIFY", token)
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: 'Invalid token' });
+    }
+
+    req.userId = user.id; // Attach user ID to the request object
+    next();
+  });
+}
+
 // Route to create a new resume
 router.post('/', authenticateToken, async (req, res) => {
   try {
@@ -32,9 +53,15 @@ router.post('/', authenticateToken, async (req, res) => {
     // Add the user ID from the token to the resume data
     resumeData.user = req.userId;
 
+    const data = { ...resumeMock, ...resumeData };
+
+    console.log(data)
+
     // Create a new resume
-    const newResume = new Resume(resumeData);
+    const newResume = new Resume(data);
     await newResume.save();
+
+    newResume.user = undefined;
 
     res.status(201).json({ message: 'Resume created successfully', resume: newResume });
   } catch (error) {
@@ -57,7 +84,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Route to get all resumes for the authenticated user
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', withUser, async (req, res) => {
 
   const { id } = req.params;
 
